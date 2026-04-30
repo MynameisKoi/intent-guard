@@ -1,0 +1,107 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Light theme overrides for existing Tailwind utility-heavy markup. */
+html.theme-light body {
+  background: #f3f6fb;
+  color: #0b1220;
+}
+
+html.theme-light .bg-ig-bg {
+  background-color: #f3f6fb !important;
+}
+
+html.theme-light .bg-ig-panel {
+  background-color: #ffffff !important;
+}
+
+html.theme-light .border-ig-border {
+  border-color: #0f766e !important;
+}
+
+html.theme-light .text-ig-muted {
+  color: #475569 !important;
+}
+
+html.theme-light .text-slate-100,
+html.theme-light .text-slate-200,
+html.theme-light .text-slate-300,
+html.theme-light .text-slate-400 {
+  color: #0b1220 !important;
+}
+
+html.theme-light .text-slate-500,
+html.theme-light .text-slate-600 {
+  color: #475569 !important;
+}
+
+html.theme-light .text-white {
+  color: #0b1220 !important;
+}
+
+html.theme-light .bg-slate-800,
+html.theme-light .bg-slate-900 {
+  background-color: #ffffff !important;
+}
+
+html.theme-light .bg-ig-bg\/50,
+html.theme-light .bg-ig-bg\/60,
+html.theme-light .bg-ig-bg\/80,
+html.theme-light .bg-ig-panel\/60,
+html.theme-light .bg-ig-panel\/80 {
+  background-color: #ffffff !important;
+}
+
+html.theme-light .bg-ig-bg\/40,
+html.theme-light .bg-ig-panel\/40 {
+  background-color: #ffffff !important;
+}
+
+html.theme-light .bg-\[\#05070a\],
+html.theme-light .bg-\[\#0a0d12\] {
+  background-color: #ffffff !important;
+}
+
+html.theme-light .text-red-200 {
+  color: #b42318 !important;
+}
+
+html.theme-light .text-red-300 {
+  color: #d92d20 !important;
+}
+
+html.theme-light .text-ig-accent {
+  color: #0f766e !important;
+}
+
+html.theme-light .bg-ig-accent {
+  background-color: #0f766e !important;
+}
+
+html.theme-light .bg-red-950\/40,
+html.theme-light .bg-red-950\/50,
+html.theme-light .bg-red-950\/70,
+html.theme-light .bg-amber-950\/30,
+html.theme-light .bg-amber-950\/70,
+html.theme-light .bg-emerald-950\/30,
+html.theme-light .bg-emerald-950\/60 {
+  background-color: #ffffff !important;
+}
+
+html.theme-light .shadow,
+html.theme-light .shadow-lg,
+html.theme-light .shadow-xl {
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.08) !important;
+}

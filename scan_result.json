@@ -1,0 +1,1817 @@
+﻿{
+    "created_at": "2026-04-21T16:50:06.128429+00:00",
+    "report": {
+        "category_scores": [
+            {
+                "category": "exfiltration",
+                "level": "medium"
+            },
+            {
+                "category": "injection",
+                "level": "medium"
+            },
+            {
+                "category": "privilege",
+                "level": "low"
+            },
+            {
+                "category": "retry",
+                "level": "low"
+            },
+            {
+                "category": "supply",
+                "level": "low"
+            }
+        ],
+        "findings": [
+            {
+                "confidence": 0.95,
+                "description": "The mcp-server-fetch tool fetches arbitrary user-supplied URLs with no IP/domain allowlist. The README explicitly warns it \u0027can access local/internal IP addresses and may represent a security risk.\u0027 An LLM or malicious prompt could direct it to fetch internal metadata endpoints (e.g., AWS IMDS at 169.254.169.254), internal services, or other SSRF targets. robots.txt checking is the only guard and can be disabled with --ignore-robots-txt.",
+                "id": "F-001",
+                "owasp_id": "A05",
+                "title": "Unrestricted SSRF via fetch server"
+            },
+            {
+                "confidence": 0.9,
+                "description": "The \u0027get-env\u0027 tool in the everything server returns ALL process environment variables as formatted JSON. If the server process has secrets in its environment (API keys, tokens, credentials), any connected LLM client or prompt injection could trigger this tool to exfiltrate them.",
+                "id": "F-002",
+                "owasp_id": "A05",
+                "title": "Environment variable exfiltration via get-env tool"
+            },
+            {
+                "confidence": 0.75,
+                "description": "The instructions.md contains an explicit easter egg instruction directing the LLM to respond with a specific string when asked about server instructions. While benign here, this pattern demonstrates that server instructions can override or manipulate LLM behavior, and a malicious server could use this vector to inject adversarial instructions into the LLM\u0027s context.",
+                "id": "F-003",
+                "owasp_id": "A01",
+                "title": "Prompt injection risk via server instructions easter egg"
+            },
+            {
+                "confidence": 0.5,
+                "description": "scripts/release.py executes subprocess calls to \u0027git rev-parse\u0027, \u0027git diff\u0027, and \u0027uv lock\u0027 with user-supplied git hash values. The git hash is validated with a regex and length check, but the validated value is passed directly to subprocess.run as a list argument (not shell=True), which mitigates injection. Risk is low but the pattern warrants review.",
+                "id": "F-004",
+                "owasp_id": null,
+                "title": "Subprocess execution in release script with git hash input"
+            },
+            {
+                "confidence": 0.7,
+                "description": "The everything server implements tools (trigger-sampling-request, trigger-elicitation-request, trigger-sampling-request-async, trigger-elicitation-request-async) that send requests back to the LLM client. A compromised or malicious server could use these to solicit sensitive information from users or manipulate the LLM\u0027s reasoning by injecting crafted prompts via the sampling interface.",
+                "id": "F-005",
+                "owasp_id": "A01",
+                "title": "Bidirectional sampling/elicitation requests to LLM client"
+            },
+            {
+                "confidence": 0.8,
+                "description": "The gzip-file-as-resource tool fetches content from arbitrary URLs or data URIs, compresses it, and registers it as a session resource. While GZIP_ALLOWED_DOMAINS can restrict domains, the default is empty (all domains allowed). This creates another SSRF vector similar to the fetch server, and also allows storing fetched content as persistent session resources.",
+                "id": "F-006",
+                "owasp_id": "A05",
+                "title": "gzip-file-as-resource fetches arbitrary URLs with configurable domain allowlist"
+            },
+            {
+                "confidence": 0.4,
+                "description": "The .mcp.json configures an MCP server at https://modelcontextprotocol.io/mcp over HTTP transport. This means the development environment connects to an external server, which could be a supply chain or MITM risk if the endpoint were compromised.",
+                "id": "F-007",
+                "owasp_id": null,
+                "title": "MCP docs server configured as external HTTP endpoint"
+            },
+            {
+                "confidence": 0.8,
+                "description": "The SSE and Streamable HTTP transport managers expose unauthenticated endpoints (/sse, /message, /mcp). Any client that can reach the network interface can connect and invoke all registered tools, including get-env and gzip-file-as-resource.",
+                "id": "F-008",
+                "owasp_id": "A07",
+                "title": "No authentication on SSE/Streamable HTTP transports"
+            }
+        ],
+        "intent_summary": "This is the official Model Context Protocol (MCP) reference server monorepo maintained by Anthropic/LF Projects. It contains educational reference implementations (TypeScript and Python) demonstrating MCP protocol features: filesystem access, web fetching, git operations, memory/knowledge graphs, sequential thinking, and a comprehensive \u0027everything\u0027 server exercising all MCP primitives. The codebase also includes release automation scripts. The servers are explicitly labeled as reference/educational implementations, not production-ready.",
+        "meta": {
+            "sandbox": {
+                "ok": true,
+                "ran": true,
+                "stderr": "",
+                "stdout": "sandbox_ok\n"
+            },
+            "source": "llm",
+            "target": "https://github.com/modelcontextprotocol/servers"
+        },
+        "network_targets": [
+            "https://modelcontextprotocol.io/mcp",
+            "Arbitrary user-supplied URLs (fetch server, no allowlist by default)",
+            "Internal/local IP addresses (explicitly warned in fetch README)",
+            "http://proxy.example.com:8080 (test fixtures)",
+            "https://registry.modelcontextprotocol.io/"
+        ],
+        "permissions_inferred": [
+            "Outbound HTTP/HTTPS requests to arbitrary URLs (fetch server)",
+            "Local filesystem read/write (filesystem server)",
+            "Git repository read/write (git server)",
+            "Process environment variable access (get-env tool exposes all env vars)",
+            "Subprocess execution (release.py: git, uv commands)",
+            "Sampling/elicitation requests back to LLM client",
+            "Session-scoped resource registration",
+            "MCP docs server HTTP connection to modelcontextprotocol.io"
+        ],
+        "risk_label": "Medium",
+        "risk_score": 4.2,
+        "shell_execution": true
+    },
+    "scan_id": "ae41dcc4-737d-4e8d-8149-11118c4ebaa0",
+    "status": "completed",
+    "target": "https://github.com/modelcontextprotocol/servers",
+    "topology": {
+        "edges": [
+            {
+                "id": "n_24a5543ef38d",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_1044b3958e31",
+                "target": "n_f580795ecac0"
+            },
+            {
+                "id": "n_2336c2873c81",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_1044b3958e31",
+                "target": "n_340021e393c3"
+            },
+            {
+                "id": "n_17fea103757a",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_1044b3958e31",
+                "target": "n_8c722211eee3"
+            },
+            {
+                "id": "n_13fb1fd541f8",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_1044b3958e31",
+                "target": "n_ba520003e7cd"
+            },
+            {
+                "id": "n_db5ba2885b85",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_1044b3958e31",
+                "target": "n_736a127d7e9c"
+            },
+            {
+                "id": "n_f229f767e594",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_1044b3958e31",
+                "target": "n_dd2be04c54c9"
+            },
+            {
+                "id": "n_9473881994fa",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_1044b3958e31",
+                "target": "n_1bf84f62305f"
+            },
+            {
+                "id": "n_292719c4f38e",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_1044b3958e31",
+                "target": "n_f94cc8537440"
+            },
+            {
+                "id": "n_33623a4a9fa3",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_1044b3958e31",
+                "target": "n_5f69dc7581b5"
+            },
+            {
+                "id": "n_ca95b7ad3a41",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_1044b3958e31",
+                "target": "n_05cdd422df8f"
+            },
+            {
+                "id": "n_68fc1f8c7a56",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_1044b3958e31",
+                "target": "n_9b0cf1bec7b5"
+            },
+            {
+                "id": "n_b8f0868ee233",
+                "kind": "flows_to",
+                "meta": {},
+                "source": "n_9b0cf1bec7b5",
+                "target": "n_a6b06825b7cb"
+            },
+            {
+                "id": "n_82e5c8b30600",
+                "kind": "flows_to",
+                "meta": {},
+                "source": "n_f580795ecac0",
+                "target": "n_a6b06825b7cb"
+            },
+            {
+                "id": "n_d0dd89b6187b",
+                "kind": "flows_to",
+                "meta": {},
+                "source": "n_5f69dc7581b5",
+                "target": "n_a6b06825b7cb"
+            },
+            {
+                "id": "n_2509c21ef027",
+                "kind": "flows_to",
+                "meta": {},
+                "source": "n_05cdd422df8f",
+                "target": "n_04a0565cd5c8"
+            },
+            {
+                "id": "n_35e6b7d28924",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_8e7c133ac95f",
+                "target": "n_40c0a64f0c07"
+            },
+            {
+                "id": "n_57d4124db81a",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_fa03b23e7f9d",
+                "target": "n_46544e87b6bc"
+            },
+            {
+                "id": "n_b9970a7b4d2f",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_fa03b23e7f9d",
+                "target": "n_746e6d91a475"
+            },
+            {
+                "id": "n_7d5c22182449",
+                "kind": "flows_to",
+                "meta": {},
+                "source": "n_fa03b23e7f9d",
+                "target": "n_04a0565cd5c8"
+            },
+            {
+                "id": "n_e75caa4b600c",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_0c5573f0803c",
+                "target": "n_bf355197d6ed"
+            },
+            {
+                "id": "n_94d619eab881",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_0c5573f0803c",
+                "target": "n_a63f4b6d6e53"
+            },
+            {
+                "id": "n_2ce3698f0239",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_0c5573f0803c",
+                "target": "n_5946b419e68f"
+            },
+            {
+                "id": "n_c77361b5584e",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_0c5573f0803c",
+                "target": "n_56d13c25b70c"
+            },
+            {
+                "id": "n_8467e0fcb325",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_0c5573f0803c",
+                "target": "n_f052ff611154"
+            },
+            {
+                "id": "n_a447486b356f",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_0c5573f0803c",
+                "target": "n_daca48e91d57"
+            },
+            {
+                "id": "n_a3c973144b51",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_0c5573f0803c",
+                "target": "n_cf84536dec8a"
+            },
+            {
+                "id": "n_dab4dd760806",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_0c5573f0803c",
+                "target": "n_ca4f95b36997"
+            },
+            {
+                "id": "n_84d4aff4ce3a",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_0c5573f0803c",
+                "target": "n_b65f9dab096d"
+            },
+            {
+                "id": "n_d371d6f929f1",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_3947d677b272",
+                "target": "n_f110cdc6afad"
+            },
+            {
+                "id": "n_6afc931e84ee",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_58a366987004",
+                "target": "n_35d3ec491293"
+            },
+            {
+                "id": "n_f035c253cc37",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_58a366987004",
+                "target": "n_d42817fa2d6b"
+            },
+            {
+                "id": "n_d27fb2769ade",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_58a366987004",
+                "target": "n_faaa29075181"
+            },
+            {
+                "id": "n_cadd995e9077",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_58a366987004",
+                "target": "n_2b0972be9901"
+            },
+            {
+                "id": "n_0d8986f3db4b",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_58a366987004",
+                "target": "n_f93c4da81553"
+            },
+            {
+                "id": "n_b1ce52312695",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_58a366987004",
+                "target": "n_fc847c1db0ac"
+            },
+            {
+                "id": "n_4debf0fdc0c9",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_58a366987004",
+                "target": "n_8f2d2241d486"
+            },
+            {
+                "id": "n_196e3e98826d",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_58a366987004",
+                "target": "n_7dad0525c474"
+            },
+            {
+                "id": "n_1311646e74e2",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_58a366987004",
+                "target": "n_004a9fcf5fd8"
+            },
+            {
+                "id": "n_f528c71ebc8b",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_58a366987004",
+                "target": "n_f180c0b65d5d"
+            },
+            {
+                "id": "n_9cb10650877f",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_58a366987004",
+                "target": "n_f3b7ac054225"
+            },
+            {
+                "id": "n_a3a21a40fd1a",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_58a366987004",
+                "target": "n_53ac7aee9cc1"
+            },
+            {
+                "id": "n_da6868d40161",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_58a366987004",
+                "target": "n_5366bb0c7429"
+            },
+            {
+                "id": "n_6e9c9913fcaf",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_58a366987004",
+                "target": "n_2ee7eb955fae"
+            },
+            {
+                "id": "n_f9d6ddf82524",
+                "kind": "flows_to",
+                "meta": {},
+                "source": "n_58a366987004",
+                "target": "n_04a0565cd5c8"
+            },
+            {
+                "id": "n_a64154132182",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_6118fb0e49c0"
+            },
+            {
+                "id": "n_eee72146a068",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_2ae0bef7458b"
+            },
+            {
+                "id": "n_fa820ec512d8",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_7de56d7bbf51"
+            },
+            {
+                "id": "n_1ebd0bdcfb75",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_dadc5604061f"
+            },
+            {
+                "id": "n_acd2366d14e5",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_976a537593da"
+            },
+            {
+                "id": "n_d2ed2caf6959",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_a33122a41b6a"
+            },
+            {
+                "id": "n_ffd43655aba4",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_d39cd9ca0113"
+            },
+            {
+                "id": "n_558a38ebe4ca",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_3161653dd8d9"
+            },
+            {
+                "id": "n_ddf0139b1bdf",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_acdab5966ace"
+            },
+            {
+                "id": "n_4962f91b1166",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_59644cf98406"
+            },
+            {
+                "id": "n_4954c81735ea",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_d8cc53fb8f91"
+            },
+            {
+                "id": "n_e9b531764150",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_9a17859d4cb8"
+            },
+            {
+                "id": "n_cd9d420bc663",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_9cda631988dd"
+            },
+            {
+                "id": "n_e321f86b4bfa",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_bc40e87e4375"
+            },
+            {
+                "id": "n_5d06d846f290",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_f51eff10c7eb"
+            },
+            {
+                "id": "n_9dca1b9a10a8",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_567252548274"
+            },
+            {
+                "id": "n_af01563d0143",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_d836690f3b20"
+            },
+            {
+                "id": "n_b84d498556de",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_d9333975cf60"
+            },
+            {
+                "id": "n_6dfe3ac06c82",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_cf887ccb6b4c"
+            },
+            {
+                "id": "n_3179327a2e1c",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_b5b7fc1f03cd"
+            },
+            {
+                "id": "n_9d43e07c9a5d",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_7ace067d66c3"
+            },
+            {
+                "id": "n_a934421e9fc2",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_edde177f741a"
+            },
+            {
+                "id": "n_45382f15396f",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_f391aae2dafb"
+            },
+            {
+                "id": "n_fd01c5689b6b",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_d6ac534c3fdc"
+            },
+            {
+                "id": "n_1136f4fd901c",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_040ed89df7e5"
+            },
+            {
+                "id": "n_26372eebe828",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_8973769f8a04"
+            },
+            {
+                "id": "n_bc4959eb272e",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_a00469958141"
+            },
+            {
+                "id": "n_37201f2a849c",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_6c03ccee675d"
+            },
+            {
+                "id": "n_5220da858c04",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_1eafbb07d50e"
+            },
+            {
+                "id": "n_82e2aa36f463",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_b1aa32fac1a8"
+            },
+            {
+                "id": "n_53f8698fb8b7",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_3df09f3f5108"
+            },
+            {
+                "id": "n_28c965235f49",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_5e3f76a50f01"
+            },
+            {
+                "id": "n_c47c4fff25ac",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_23d6056c88a5"
+            },
+            {
+                "id": "n_59c69c26f6d7",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_37f44f74e4f3"
+            },
+            {
+                "id": "n_82223709a7d5",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_4a42d985de47"
+            },
+            {
+                "id": "n_484c0cff9e96",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_fa9395f18f7c"
+            },
+            {
+                "id": "n_c3efee65a0fb",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_5f154eaf76b3"
+            },
+            {
+                "id": "n_3962720c53bb",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_ef6e4eb2690c"
+            },
+            {
+                "id": "n_1033cfebb9d9",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_a2b2bb30c19a"
+            },
+            {
+                "id": "n_6f980bbb4bdf",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_ad3f8f2a5bca"
+            },
+            {
+                "id": "n_d06f84a795a5",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_b424cd104e2f"
+            },
+            {
+                "id": "n_9f04c301b260",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_d5976fa2d7f8",
+                "target": "n_e8e390de6d8c"
+            },
+            {
+                "id": "n_6fc45d6ee99c",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_52ab2508f5e9",
+                "target": "n_8f6bce85c46b"
+            },
+            {
+                "id": "n_5795cd28f43c",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_6a53e044c525",
+                "target": "n_ea8c4d7f7331"
+            },
+            {
+                "id": "n_89e8bac66dbb",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_6a53e044c525",
+                "target": "n_c018c016b4d5"
+            },
+            {
+                "id": "n_3bb7aacd709d",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_6a53e044c525",
+                "target": "n_0ecea13ed42b"
+            },
+            {
+                "id": "n_0823f30e0f6a",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_6a53e044c525",
+                "target": "n_9a6ffa8c7d74"
+            },
+            {
+                "id": "n_892c947f375f",
+                "kind": "flows_to",
+                "meta": {},
+                "source": "n_6a53e044c525",
+                "target": "n_04a0565cd5c8"
+            },
+            {
+                "id": "n_320e79a2c692",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_3bd09d344fa2",
+                "target": "n_506c9cfc1093"
+            },
+            {
+                "id": "n_f79048927ae6",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_3bd09d344fa2",
+                "target": "n_214aa0819a2a"
+            },
+            {
+                "id": "n_a09b6e997697",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_3bd09d344fa2",
+                "target": "n_167f0122c6ca"
+            },
+            {
+                "id": "n_f273190c00da",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_3bd09d344fa2",
+                "target": "n_c7906da7d7a2"
+            },
+            {
+                "id": "n_f17d27f0535d",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_3bd09d344fa2",
+                "target": "n_f2e03d2e6b14"
+            },
+            {
+                "id": "n_f5b4347353ba",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_3bd09d344fa2",
+                "target": "n_a209f537d461"
+            },
+            {
+                "id": "n_08f7d5b84992",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_3bd09d344fa2",
+                "target": "n_ffd16f2982f2"
+            },
+            {
+                "id": "n_c7c58b9e826d",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_3bd09d344fa2",
+                "target": "n_8619615f1ea4"
+            },
+            {
+                "id": "n_b45de97c3db7",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_3bd09d344fa2",
+                "target": "n_48da3ff79c92"
+            },
+            {
+                "id": "n_79fc4389a3f2",
+                "kind": "contains",
+                "meta": {},
+                "source": "n_3bd09d344fa2",
+                "target": "n_f64902cde980"
+            }
+        ],
+        "nodes": [
+            {
+                "id": "n_83aa8a17d89e",
+                "kind": "file",
+                "label": ".mcp.json",
+                "meta": {
+                    "type": "json"
+                },
+                "path": ".mcp.json"
+            },
+            {
+                "id": "n_1044b3958e31",
+                "kind": "file",
+                "label": "scripts\\release.py",
+                "meta": {},
+                "path": "scripts\\release.py"
+            },
+            {
+                "id": "n_f580795ecac0",
+                "kind": "function",
+                "label": "has_changes",
+                "meta": {
+                    "lineno": 104
+                },
+                "path": "scripts\\release.py"
+            },
+            {
+                "id": "n_340021e393c3",
+                "kind": "function",
+                "label": "gen_version",
+                "meta": {
+                    "lineno": 122
+                },
+                "path": "scripts\\release.py"
+            },
+            {
+                "id": "n_8c722211eee3",
+                "kind": "function",
+                "label": "find_changed_packages",
+                "meta": {
+                    "lineno": 128
+                },
+                "path": "scripts\\release.py"
+            },
+            {
+                "id": "n_ba520003e7cd",
+                "kind": "function",
+                "label": "cli",
+                "meta": {
+                    "lineno": 138
+                },
+                "path": "scripts\\release.py"
+            },
+            {
+                "id": "n_736a127d7e9c",
+                "kind": "function",
+                "label": "update_packages",
+                "meta": {
+                    "lineno": 147
+                },
+                "path": "scripts\\release.py"
+            },
+            {
+                "id": "n_dd2be04c54c9",
+                "kind": "function",
+                "label": "generate_notes",
+                "meta": {
+                    "lineno": 166
+                },
+                "path": "scripts\\release.py"
+            },
+            {
+                "id": "n_1bf84f62305f",
+                "kind": "function",
+                "label": "generate_version",
+                "meta": {
+                    "lineno": 182
+                },
+                "path": "scripts\\release.py"
+            },
+            {
+                "id": "n_f94cc8537440",
+                "kind": "function",
+                "label": "generate_matrix",
+                "meta": {
+                    "lineno": 195
+                },
+                "path": "scripts\\release.py"
+            },
+            {
+                "id": "n_5f69dc7581b5",
+                "kind": "function",
+                "label": "convert",
+                "meta": {
+                    "lineno": 28
+                },
+                "path": "scripts\\release.py"
+            },
+            {
+                "id": "n_05cdd422df8f",
+                "kind": "function",
+                "label": "package_name",
+                "meta": {
+                    "lineno": 57
+                },
+                "path": "scripts\\release.py"
+            },
+            {
+                "id": "n_9b0cf1bec7b5",
+                "kind": "function",
+                "label": "update_version",
+                "meta": {
+                    "lineno": 59
+                },
+                "path": "scripts\\release.py"
+            },
+            {
+                "id": "n_a6b06825b7cb",
+                "kind": "external",
+                "label": "subprocess",
+                "meta": {},
+                "path": null
+            },
+            {
+                "id": "n_04a0565cd5c8",
+                "kind": "external",
+                "label": "HTTP",
+                "meta": {
+                    "family": "network"
+                },
+                "path": null
+            },
+            {
+                "id": "n_8e7c133ac95f",
+                "kind": "file",
+                "label": "src\\fetch\\src\\mcp_server_fetch\\__init__.py",
+                "meta": {},
+                "path": "src\\fetch\\src\\mcp_server_fetch\\__init__.py"
+            },
+            {
+                "id": "n_40c0a64f0c07",
+                "kind": "function",
+                "label": "main",
+                "meta": {
+                    "lineno": 4
+                },
+                "path": "src\\fetch\\src\\mcp_server_fetch\\__init__.py"
+            },
+            {
+                "id": "n_014deebb0ade",
+                "kind": "file",
+                "label": "src\\fetch\\src\\mcp_server_fetch\\__main__.py",
+                "meta": {},
+                "path": "src\\fetch\\src\\mcp_server_fetch\\__main__.py"
+            },
+            {
+                "id": "n_fa03b23e7f9d",
+                "kind": "file",
+                "label": "src\\fetch\\src\\mcp_server_fetch\\server.py",
+                "meta": {},
+                "path": "src\\fetch\\src\\mcp_server_fetch\\server.py"
+            },
+            {
+                "id": "n_46544e87b6bc",
+                "kind": "function",
+                "label": "extract_content_from_html",
+                "meta": {
+                    "lineno": 27
+                },
+                "path": "src\\fetch\\src\\mcp_server_fetch\\server.py"
+            },
+            {
+                "id": "n_746e6d91a475",
+                "kind": "function",
+                "label": "get_robots_txt_url",
+                "meta": {
+                    "lineno": 48
+                },
+                "path": "src\\fetch\\src\\mcp_server_fetch\\server.py"
+            },
+            {
+                "id": "n_81b11602a4a9",
+                "kind": "file",
+                "label": "src\\fetch\\tests\\__init__.py",
+                "meta": {},
+                "path": "src\\fetch\\tests\\__init__.py"
+            },
+            {
+                "id": "n_0c5573f0803c",
+                "kind": "file",
+                "label": "src\\fetch\\tests\\test_server.py",
+                "meta": {},
+                "path": "src\\fetch\\tests\\test_server.py"
+            },
+            {
+                "id": "n_bf355197d6ed",
+                "kind": "function",
+                "label": "test_simple_url",
+                "meta": {
+                    "lineno": 19
+                },
+                "path": "src\\fetch\\tests\\test_server.py"
+            },
+            {
+                "id": "n_a63f4b6d6e53",
+                "kind": "function",
+                "label": "test_url_with_path",
+                "meta": {
+                    "lineno": 24
+                },
+                "path": "src\\fetch\\tests\\test_server.py"
+            },
+            {
+                "id": "n_5946b419e68f",
+                "kind": "function",
+                "label": "test_url_with_query_params",
+                "meta": {
+                    "lineno": 29
+                },
+                "path": "src\\fetch\\tests\\test_server.py"
+            },
+            {
+                "id": "n_56d13c25b70c",
+                "kind": "function",
+                "label": "test_url_with_port",
+                "meta": {
+                    "lineno": 34
+                },
+                "path": "src\\fetch\\tests\\test_server.py"
+            },
+            {
+                "id": "n_f052ff611154",
+                "kind": "function",
+                "label": "test_url_with_fragment",
+                "meta": {
+                    "lineno": 39
+                },
+                "path": "src\\fetch\\tests\\test_server.py"
+            },
+            {
+                "id": "n_daca48e91d57",
+                "kind": "function",
+                "label": "test_http_url",
+                "meta": {
+                    "lineno": 44
+                },
+                "path": "src\\fetch\\tests\\test_server.py"
+            },
+            {
+                "id": "n_cf84536dec8a",
+                "kind": "function",
+                "label": "test_simple_html",
+                "meta": {
+                    "lineno": 53
+                },
+                "path": "src\\fetch\\tests\\test_server.py"
+            },
+            {
+                "id": "n_ca4f95b36997",
+                "kind": "function",
+                "label": "test_html_with_links",
+                "meta": {
+                    "lineno": 70
+                },
+                "path": "src\\fetch\\tests\\test_server.py"
+            },
+            {
+                "id": "n_b65f9dab096d",
+                "kind": "function",
+                "label": "test_empty_content_returns_error",
+                "meta": {
+                    "lineno": 84
+                },
+                "path": "src\\fetch\\tests\\test_server.py"
+            },
+            {
+                "id": "n_3947d677b272",
+                "kind": "file",
+                "label": "src\\git\\src\\mcp_server_git\\__init__.py",
+                "meta": {},
+                "path": "src\\git\\src\\mcp_server_git\\__init__.py"
+            },
+            {
+                "id": "n_f110cdc6afad",
+                "kind": "function",
+                "label": "main",
+                "meta": {
+                    "lineno": 10
+                },
+                "path": "src\\git\\src\\mcp_server_git\\__init__.py"
+            },
+            {
+                "id": "n_f38654be61b6",
+                "kind": "file",
+                "label": "src\\git\\src\\mcp_server_git\\__main__.py",
+                "meta": {},
+                "path": "src\\git\\src\\mcp_server_git\\__main__.py"
+            },
+            {
+                "id": "n_58a366987004",
+                "kind": "file",
+                "label": "src\\git\\src\\mcp_server_git\\server.py",
+                "meta": {},
+                "path": "src\\git\\src\\mcp_server_git\\server.py"
+            },
+            {
+                "id": "n_35d3ec491293",
+                "kind": "function",
+                "label": "git_status",
+                "meta": {
+                    "lineno": 111
+                },
+                "path": "src\\git\\src\\mcp_server_git\\server.py"
+            },
+            {
+                "id": "n_d42817fa2d6b",
+                "kind": "function",
+                "label": "git_diff_unstaged",
+                "meta": {
+                    "lineno": 114
+                },
+                "path": "src\\git\\src\\mcp_server_git\\server.py"
+            },
+            {
+                "id": "n_faaa29075181",
+                "kind": "function",
+                "label": "git_diff_staged",
+                "meta": {
+                    "lineno": 117
+                },
+                "path": "src\\git\\src\\mcp_server_git\\server.py"
+            },
+            {
+                "id": "n_2b0972be9901",
+                "kind": "function",
+                "label": "git_diff",
+                "meta": {
+                    "lineno": 120
+                },
+                "path": "src\\git\\src\\mcp_server_git\\server.py"
+            },
+            {
+                "id": "n_f93c4da81553",
+                "kind": "function",
+                "label": "git_commit",
+                "meta": {
+                    "lineno": 128
+                },
+                "path": "src\\git\\src\\mcp_server_git\\server.py"
+            },
+            {
+                "id": "n_fc847c1db0ac",
+                "kind": "function",
+                "label": "git_add",
+                "meta": {
+                    "lineno": 132
+                },
+                "path": "src\\git\\src\\mcp_server_git\\server.py"
+            },
+            {
+                "id": "n_8f2d2241d486",
+                "kind": "function",
+                "label": "git_reset",
+                "meta": {
+                    "lineno": 140
+                },
+                "path": "src\\git\\src\\mcp_server_git\\server.py"
+            },
+            {
+                "id": "n_7dad0525c474",
+                "kind": "function",
+                "label": "git_log",
+                "meta": {
+                    "lineno": 144
+                },
+                "path": "src\\git\\src\\mcp_server_git\\server.py"
+            },
+            {
+                "id": "n_004a9fcf5fd8",
+                "kind": "function",
+                "label": "git_create_branch",
+                "meta": {
+                    "lineno": 185
+                },
+                "path": "src\\git\\src\\mcp_server_git\\server.py"
+            },
+            {
+                "id": "n_f180c0b65d5d",
+                "kind": "function",
+                "label": "git_checkout",
+                "meta": {
+                    "lineno": 199
+                },
+                "path": "src\\git\\src\\mcp_server_git\\server.py"
+            },
+            {
+                "id": "n_f3b7ac054225",
+                "kind": "function",
+                "label": "git_show",
+                "meta": {
+                    "lineno": 210
+                },
+                "path": "src\\git\\src\\mcp_server_git\\server.py"
+            },
+            {
+                "id": "n_53ac7aee9cc1",
+                "kind": "function",
+                "label": "validate_repo_path",
+                "meta": {
+                    "lineno": 237
+                },
+                "path": "src\\git\\src\\mcp_server_git\\server.py"
+            },
+            {
+                "id": "n_5366bb0c7429",
+                "kind": "function",
+                "label": "git_branch",
+                "meta": {
+                    "lineno": 258
+                },
+                "path": "src\\git\\src\\mcp_server_git\\server.py"
+            },
+            {
+                "id": "n_2ee7eb955fae",
+                "kind": "function",
+                "label": "by_commandline",
+                "meta": {
+                    "lineno": 465
+                },
+                "path": "src\\git\\src\\mcp_server_git\\server.py"
+            },
+            {
+                "id": "n_d5976fa2d7f8",
+                "kind": "file",
+                "label": "src\\git\\tests\\test_server.py",
+                "meta": {},
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_6118fb0e49c0",
+                "kind": "function",
+                "label": "test_repository",
+                "meta": {
+                    "lineno": 23
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_2ae0bef7458b",
+                "kind": "function",
+                "label": "test_git_checkout_existing_branch",
+                "meta": {
+                    "lineno": 35
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_7de56d7bbf51",
+                "kind": "function",
+                "label": "test_git_checkout_nonexistent_branch",
+                "meta": {
+                    "lineno": 42
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_dadc5604061f",
+                "kind": "function",
+                "label": "test_git_branch_local",
+                "meta": {
+                    "lineno": 47
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_976a537593da",
+                "kind": "function",
+                "label": "test_git_branch_remote",
+                "meta": {
+                    "lineno": 52
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_a33122a41b6a",
+                "kind": "function",
+                "label": "test_git_branch_all",
+                "meta": {
+                    "lineno": 56
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_d39cd9ca0113",
+                "kind": "function",
+                "label": "test_git_branch_contains",
+                "meta": {
+                    "lineno": 61
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_3161653dd8d9",
+                "kind": "function",
+                "label": "test_git_branch_not_contains",
+                "meta": {
+                    "lineno": 75
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_acdab5966ace",
+                "kind": "function",
+                "label": "test_git_add_all_files",
+                "meta": {
+                    "lineno": 89
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_59644cf98406",
+                "kind": "function",
+                "label": "test_git_add_specific_files",
+                "meta": {
+                    "lineno": 99
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_d8cc53fb8f91",
+                "kind": "function",
+                "label": "test_git_status",
+                "meta": {
+                    "lineno": 112
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_9a17859d4cb8",
+                "kind": "function",
+                "label": "test_git_diff_unstaged",
+                "meta": {
+                    "lineno": 118
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_9cda631988dd",
+                "kind": "function",
+                "label": "test_git_diff_unstaged_empty",
+                "meta": {
+                    "lineno": 127
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_bc40e87e4375",
+                "kind": "function",
+                "label": "test_git_diff_staged",
+                "meta": {
+                    "lineno": 132
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_f51eff10c7eb",
+                "kind": "function",
+                "label": "test_git_diff_staged_empty",
+                "meta": {
+                    "lineno": 142
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_567252548274",
+                "kind": "function",
+                "label": "test_git_diff",
+                "meta": {
+                    "lineno": 147
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_d836690f3b20",
+                "kind": "function",
+                "label": "test_git_commit",
+                "meta": {
+                    "lineno": 161
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_d9333975cf60",
+                "kind": "function",
+                "label": "test_git_reset",
+                "meta": {
+                    "lineno": 173
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_cf887ccb6b4c",
+                "kind": "function",
+                "label": "test_git_log",
+                "meta": {
+                    "lineno": 188
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_b5b7fc1f03cd",
+                "kind": "function",
+                "label": "test_git_log_default",
+                "meta": {
+                    "lineno": 204
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_7ace067d66c3",
+                "kind": "function",
+                "label": "test_git_create_branch",
+                "meta": {
+                    "lineno": 211
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_edde177f741a",
+                "kind": "function",
+                "label": "test_git_create_branch_from_base",
+                "meta": {
+                    "lineno": 219
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_f391aae2dafb",
+                "kind": "function",
+                "label": "test_git_show",
+                "meta": {
+                    "lineno": 230
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_d6ac534c3fdc",
+                "kind": "function",
+                "label": "test_git_show_initial_commit",
+                "meta": {
+                    "lineno": 245
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_040ed89df7e5",
+                "kind": "function",
+                "label": "test_validate_repo_path_no_restriction",
+                "meta": {
+                    "lineno": 257
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_8973769f8a04",
+                "kind": "function",
+                "label": "test_validate_repo_path_exact_match",
+                "meta": {
+                    "lineno": 262
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_a00469958141",
+                "kind": "function",
+                "label": "test_validate_repo_path_subdirectory",
+                "meta": {
+                    "lineno": 269
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_6c03ccee675d",
+                "kind": "function",
+                "label": "test_validate_repo_path_outside_allowed",
+                "meta": {
+                    "lineno": 278
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_1eafbb07d50e",
+                "kind": "function",
+                "label": "test_validate_repo_path_traversal_attempt",
+                "meta": {
+                    "lineno": 290
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_b1aa32fac1a8",
+                "kind": "function",
+                "label": "test_validate_repo_path_symlink_escape",
+                "meta": {
+                    "lineno": 302
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_3df09f3f5108",
+                "kind": "function",
+                "label": "test_git_diff_rejects_flag_injection",
+                "meta": {
+                    "lineno": 318
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_5e3f76a50f01",
+                "kind": "function",
+                "label": "test_git_checkout_rejects_flag_injection",
+                "meta": {
+                    "lineno": 330
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_23d6056c88a5",
+                "kind": "function",
+                "label": "test_git_diff_allows_valid_refs",
+                "meta": {
+                    "lineno": 342
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_37f44f74e4f3",
+                "kind": "function",
+                "label": "test_git_checkout_allows_valid_branches",
+                "meta": {
+                    "lineno": 368
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_4a42d985de47",
+                "kind": "function",
+                "label": "test_git_diff_rejects_malicious_refs",
+                "meta": {
+                    "lineno": 386
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_fa9395f18f7c",
+                "kind": "function",
+                "label": "test_git_checkout_rejects_malicious_refs",
+                "meta": {
+                    "lineno": 412
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_5f154eaf76b3",
+                "kind": "function",
+                "label": "test_git_show_rejects_flag_injection",
+                "meta": {
+                    "lineno": 432
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_ef6e4eb2690c",
+                "kind": "function",
+                "label": "test_git_show_rejects_malicious_refs",
+                "meta": {
+                    "lineno": 441
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_a2b2bb30c19a",
+                "kind": "function",
+                "label": "test_git_create_branch_rejects_flag_injection",
+                "meta": {
+                    "lineno": 454
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_ad3f8f2a5bca",
+                "kind": "function",
+                "label": "test_git_create_branch_rejects_base_branch_flag_injection",
+                "meta": {
+                    "lineno": 463
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_b424cd104e2f",
+                "kind": "function",
+                "label": "test_git_log_rejects_timestamp_flag_injection",
+                "meta": {
+                    "lineno": 469
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_e8e390de6d8c",
+                "kind": "function",
+                "label": "test_git_branch_rejects_contains_flag_injection",
+                "meta": {
+                    "lineno": 478
+                },
+                "path": "src\\git\\tests\\test_server.py"
+            },
+            {
+                "id": "n_52ab2508f5e9",
+                "kind": "file",
+                "label": "src\\time\\src\\mcp_server_time\\__init__.py",
+                "meta": {},
+                "path": "src\\time\\src\\mcp_server_time\\__init__.py"
+            },
+            {
+                "id": "n_8f6bce85c46b",
+                "kind": "function",
+                "label": "main",
+                "meta": {
+                    "lineno": 4
+                },
+                "path": "src\\time\\src\\mcp_server_time\\__init__.py"
+            },
+            {
+                "id": "n_6955b548ba3e",
+                "kind": "file",
+                "label": "src\\time\\src\\mcp_server_time\\__main__.py",
+                "meta": {},
+                "path": "src\\time\\src\\mcp_server_time\\__main__.py"
+            },
+            {
+                "id": "n_6a53e044c525",
+                "kind": "file",
+                "label": "src\\time\\src\\mcp_server_time\\server.py",
+                "meta": {},
+                "path": "src\\time\\src\\mcp_server_time\\server.py"
+            },
+            {
+                "id": "n_ea8c4d7f7331",
+                "kind": "function",
+                "label": "get_local_tz",
+                "meta": {
+                    "lineno": 41
+                },
+                "path": "src\\time\\src\\mcp_server_time\\server.py"
+            },
+            {
+                "id": "n_c018c016b4d5",
+                "kind": "function",
+                "label": "get_zoneinfo",
+                "meta": {
+                    "lineno": 53
+                },
+                "path": "src\\time\\src\\mcp_server_time\\server.py"
+            },
+            {
+                "id": "n_0ecea13ed42b",
+                "kind": "function",
+                "label": "get_current_time",
+                "meta": {
+                    "lineno": 61
+                },
+                "path": "src\\time\\src\\mcp_server_time\\server.py"
+            },
+            {
+                "id": "n_9a6ffa8c7d74",
+                "kind": "function",
+                "label": "convert_time",
+                "meta": {
+                    "lineno": 73
+                },
+                "path": "src\\time\\src\\mcp_server_time\\server.py"
+            },
+            {
+                "id": "n_3bd09d344fa2",
+                "kind": "file",
+                "label": "src\\time\\test\\time_server_test.py",
+                "meta": {},
+                "path": "src\\time\\test\\time_server_test.py"
+            },
+            {
+                "id": "n_506c9cfc1093",
+                "kind": "function",
+                "label": "test_get_current_time",
+                "meta": {
+                    "lineno": 76
+                },
+                "path": "src\\time\\test\\time_server_test.py"
+            },
+            {
+                "id": "n_214aa0819a2a",
+                "kind": "function",
+                "label": "test_get_current_time_with_invalid_timezone",
+                "meta": {
+                    "lineno": 85
+                },
+                "path": "src\\time\\test\\time_server_test.py"
+            },
+            {
+                "id": "n_167f0122c6ca",
+                "kind": "function",
+                "label": "test_convert_time_errors",
+                "meta": {
+                    "lineno": 117
+                },
+                "path": "src\\time\\test\\time_server_test.py"
+            },
+            {
+                "id": "n_c7906da7d7a2",
+                "kind": "function",
+                "label": "test_convert_time",
+                "meta": {
+                    "lineno": 451
+                },
+                "path": "src\\time\\test\\time_server_test.py"
+            },
+            {
+                "id": "n_f2e03d2e6b14",
+                "kind": "function",
+                "label": "test_get_local_tz_with_override",
+                "meta": {
+                    "lineno": 465
+                },
+                "path": "src\\time\\test\\time_server_test.py"
+            },
+            {
+                "id": "n_a209f537d461",
+                "kind": "function",
+                "label": "test_get_local_tz_with_invalid_override",
+                "meta": {
+                    "lineno": 472
+                },
+                "path": "src\\time\\test\\time_server_test.py"
+            },
+            {
+                "id": "n_ffd16f2982f2",
+                "kind": "function",
+                "label": "test_get_local_tz_with_valid_iana_name",
+                "meta": {
+                    "lineno": 479
+                },
+                "path": "src\\time\\test\\time_server_test.py"
+            },
+            {
+                "id": "n_8619615f1ea4",
+                "kind": "function",
+                "label": "test_get_local_tz_when_none_returned",
+                "meta": {
+                    "lineno": 488
+                },
+                "path": "src\\time\\test\\time_server_test.py"
+            },
+            {
+                "id": "n_48da3ff79c92",
+                "kind": "function",
+                "label": "test_get_local_tz_handles_windows_timezones",
+                "meta": {
+                    "lineno": 496
+                },
+                "path": "src\\time\\test\\time_server_test.py"
+            },
+            {
+                "id": "n_f64902cde980",
+                "kind": "function",
+                "label": "test_get_local_tz_various_timezones",
+                "meta": {
+                    "lineno": 523
+                },
+                "path": "src\\time\\test\\time_server_test.py"
+            }
+        ]
+    }
+}

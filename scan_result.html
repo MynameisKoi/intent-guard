@@ -1,0 +1,13 @@
+﻿<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Scan Result</title>
+<style>
+body{font-family:ui-monospace,Consolas,monospace;background:#0b1020;color:#e5e7eb;padding:16px}
+pre{white-space:pre-wrap;word-break:break-word;background:#111827;padding:16px;border-radius:8px}
+</style></head>
+<body><h2>IntentGuard Scan JSON</h2><pre id="out"></pre>
+<script>
+fetch('scan_result.json').then(r=>r.json()).then(j=>{
+  document.getElementById('out').textContent = JSON.stringify(j,null,2);
+});
+</script></body></html>

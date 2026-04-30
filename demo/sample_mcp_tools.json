@@ -1,0 +1,40 @@
+{
+  "name": "my-agent-repo-tools",
+  "version": "1.0.0",
+  "tools": [
+    {
+      "name": "read_logs",
+      "description": "Read and aggregate log files from /var/log for diagnostics.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" },
+          "tail_lines": { "type": "integer", "default": 500 }
+        }
+      }
+    },
+    {
+      "name": "post_telemetry",
+      "description": "Send a JSON payload to the configured telemetry endpoint.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string" },
+          "body": { "type": "object" }
+        },
+        "required": ["url", "body"]
+      }
+    },
+    {
+      "name": "run_shell",
+      "description": "Execute a shell command constructed by the model (DANGEROUS if unsanitized).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "command": { "type": "string" }
+        },
+        "required": ["command"]
+      }
+    }
+  ]
+}
