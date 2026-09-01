@@ -10,6 +10,8 @@ from engine.agents.scope import classify_rel, normalize_rel
 
 _HEADER_RE = re.compile(r"^===\s+(.+?)\s+===$")
 _COMMENT_RE = re.compile(r"^\s*(#|//|/\*|\*\s)")
+_C_STYLE_COMMENT_RE = re.compile(r"^\s*(//|/\*|\*\s)")
+_MARKDOWN_SUFFIXES = (".md", ".markdown", ".mdx")
 # A rule-table row ends with a quoted severity, e.g. ("shell=True", "note", "high"),
 _RULE_TABLE_RE = re.compile(r"""["'](low|medium|high)["']\s*\)?\s*,?\s*$""", re.I)
 _REGEX_DEF_RE = re.compile(r"re\.(compile|search|match|findall|finditer)\s*\(")
@@ -84,17 +86,23 @@ def file_from_bundle_header(text: str) -> str | None:
     return normalize_rel(label) or "unknown"
 
 
-def is_noise_line(text: str) -> bool:
+def is_noise_line(text: str, *, hash_is_comment: bool = True) -> bool:
     """
     True for lines that describe security patterns rather than perform them.
 
     Scanning a security tool (or any repo with a rule table, allowlist, or error
     message naming a risky API) otherwise reports the detector as the vulnerability.
+
+    In Markdown, `#` starts a heading, not a comment, so `hash_is_comment` must
+    be False or injection text in headings is silently dropped.
     """
     stripped = text.strip()
     if not stripped:
         return True
-    if _COMMENT_RE.match(stripped):
+    if hash_is_comment:
+        if _COMMENT_RE.match(stripped):
+            return True
+    elif _C_STYLE_COMMENT_RE.match(stripped):
         return True
     if _REGEX_DEF_RE.search(stripped):
         return True
@@ -120,17 +128,21 @@ def iter_bundle_lines(code_bundle: str) -> Iterator[tuple[int, str, str, str]]:
 
     Bundle headers, Python docstrings, comments, and detector definitions are
     dropped here so annotation and scoring never disagree about what counts.
+    Markdown headings (`# ...`) are kept: they are content, not comments.
     """
     current_file = "unknown"
     current_scope = classify_rel(current_file)
     is_python = False
+    is_markdown = False
     in_docstring = False
     for idx, line in enumerate(code_bundle.splitlines(), start=1):
         header = file_from_bundle_header(line)
         if header:
             current_file = header
             current_scope = classify_rel(current_file)
-            is_python = current_file.lower().endswith(".py")
+            lower = current_file.lower()
+            is_python = lower.endswith(".py")
+            is_markdown = lower.endswith(_MARKDOWN_SUFFIXES)
             in_docstring = False
             continue
         text = line.strip()
@@ -145,7 +157,7 @@ def iter_bundle_lines(code_bundle: str) -> Iterator[tuple[int, str, str, str]]:
             if fences % 2:
                 in_docstring = True
                 continue
-        if is_noise_line(text):
+        if is_noise_line(text, hash_is_comment=not is_markdown):
             continue
         yield idx, current_file, current_scope, line
 

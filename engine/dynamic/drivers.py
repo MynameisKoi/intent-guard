@@ -17,6 +17,7 @@ import re
 from typing import Any, Protocol
 
 from engine.agents.manifest_parser import AgentMarkdownManifest
+from engine.agents.sanitize import redact_secrets
 from engine.dynamic.environment import SyntheticEnvironment
 from engine.dynamic.scenarios import Scenario, applicable
 from engine.dynamic.tools import MockToolRegistry
@@ -139,10 +140,11 @@ class LLMDriver:
                 rationale="The agent declares no tool capable of carrying out this attack.",
             )
 
+        redacted_prompt, _ = redact_secrets(manifest.system_prompt or "")
         system = (
             f"{_DRIVER_SYSTEM}\n\n"
             f"--- AGENT UNDER TEST: {manifest.name} ---\n"
-            f"{manifest.system_prompt}\n"
+            f"{redacted_prompt}\n"
             "--- END AGENT INSTRUCTIONS ---\n\n"
             f"Tools available: {json.dumps(registry.offered_tools())}\n\n"
             f"{env.describe()}"
@@ -161,7 +163,10 @@ class LLMDriver:
         while turn < self._max_turns:
             if pending_turns:
                 transcript.append({"role": "user", "content": pending_turns.pop(0)})
-            elif turn > 0:
+            elif not transcript or transcript[-1]["role"] != "user":
+                # Stop only when there is no queued user turn and no tool result
+                # waiting for the model. A tool output is recorded as a user
+                # message, so multi-step chains (read, then fetch) can continue.
                 break
             try:
                 reply = self._invoke(system, transcript)

