@@ -11,6 +11,8 @@ from pathlib import Path
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 from werkzeug.utils import secure_filename
 
+from config import settings
+from engine.agents.ingestion import is_remote_target
 from engine.database.mongo_client import get_mongo_store
 from engine.database.neo4j_client import get_neo4j
 from engine.orchestrator import run_scan
@@ -128,6 +130,35 @@ def _cleanup_upload_dir(tmp_dir: Path) -> None:
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+def _local_target_error(target: str):
+    """
+    Local filesystem paths are a CLI-only affordance.
+
+    Accepting them over HTTP would let any caller read `.py`/`.md`/`.json` files from
+    the host and receive excerpts back in the report. Upload the content instead.
+    """
+    if is_remote_target(target):
+        return None
+    return (
+        jsonify(
+            {
+                "error": (
+                    "target must be a public GitHub repository URL "
+                    "(https://github.com/owner/repo); upload files to scan local content"
+                )
+            }
+        ),
+        400,
+    )
+
+
+def _upload_count_error(parts: list):
+    limit = int(settings.max_upload_files)
+    if len(parts) <= limit:
+        return None
+    return jsonify({"error": f"too many files in upload (limit {limit})"}), 400
+
+
 @bp.route("/scans", methods=["POST"])
 def create_scan():
     """Accept JSON `{target: url|path}` or multipart file upload."""
@@ -135,6 +166,9 @@ def create_scan():
         target = (request.json.get("target") or "").strip()
         if not target:
             return jsonify({"error": "missing target"}), 400
+        rejected = _local_target_error(target)
+        if rejected:
+            return rejected
         dynamic_logs = request.json.get("dynamic_logs")
         force_rescan = _as_bool(request.json.get("force_rescan"), False)
         if dynamic_logs is not None and not isinstance(dynamic_logs, str):
@@ -148,6 +182,9 @@ def create_scan():
         parts = _gather_multipart_file_storages()
         if not parts:
             return jsonify({"error": "missing file field `file` or `files`"}), 400
+        too_many = _upload_count_error(parts)
+        if too_many:
+            return too_many
         is_folder_upload = _is_folder_upload(parts)
         if not is_folder_upload and len(parts) == 1 and not _is_markdown_upload_name(parts[0].filename):
             return jsonify({"error": "single file upload must be a .md/.markdown file"}), 400
@@ -364,6 +401,9 @@ def create_scan_stream():
         target = (request.json.get("target") or "").strip()
         if not target:
             return jsonify({"error": "missing target"}), 400
+        rejected = _local_target_error(target)
+        if rejected:
+            return rejected
         dynamic_logs = request.json.get("dynamic_logs")
         if dynamic_logs is not None and not isinstance(dynamic_logs, str):
             dynamic_logs = json.dumps(dynamic_logs)
@@ -385,6 +425,9 @@ def create_scan_stream():
         parts = _gather_multipart_file_storages()
         if not parts:
             return jsonify({"error": "missing file field `file` or `files`"}), 400
+        too_many = _upload_count_error(parts)
+        if too_many:
+            return too_many
         is_folder_upload = _is_folder_upload(parts)
         if not is_folder_upload and len(parts) == 1 and not _is_markdown_upload_name(parts[0].filename):
             return jsonify({"error": "single file upload must be a .md/.markdown file"}), 400

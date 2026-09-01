@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import NutritionLabel from "../components/NutritionLabel";
 import TopologyGraph from "../components/TopologyGraph";
+import WorkflowGraph from "../components/WorkflowGraph";
 import { getReport, getTopology } from "../utils/api";
 
 export default function ScanDetails() {
@@ -9,6 +10,7 @@ export default function ScanDetails() {
   const [reportPayload, setReportPayload] = useState(null);
   const [topology, setTopology] = useState(null);
   const [err, setErr] = useState("");
+  const [graphView, setGraphView] = useState("workflow");
   const [graphFilters, setGraphFilters] = useState({
     showTests: false,
     highRiskOnly: false,
@@ -81,8 +83,28 @@ export default function ScanDetails() {
           <NutritionLabel report={report} sources={sources} />
         </div>
         <div>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ig-muted">Graph topology</h2>
-          <TopologyGraph topology={topology} graphFilters={graphFilters} onChangeGraphFilters={setGraphFilters} />
+          <div className="mb-3 flex items-center gap-1 rounded-lg border border-ig-border bg-ig-panel p-1 text-xs">
+            {[
+              ["workflow", "What it does"],
+              ["topology", "Code topology"],
+            ].map(([key, caption]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setGraphView(key)}
+                className={`rounded-md px-3 py-1.5 font-semibold transition ${
+                  graphView === key ? "bg-ig-accent/20 text-ig-accent" : "text-ig-muted hover:text-slate-200"
+                }`}
+              >
+                {caption}
+              </button>
+            ))}
+          </div>
+          {graphView === "workflow" ? (
+            <WorkflowGraph workflow={report?.workflow} />
+          ) : (
+            <TopologyGraph topology={topology} graphFilters={graphFilters} onChangeGraphFilters={setGraphFilters} />
+          )}
         </div>
       </div>
     </div>

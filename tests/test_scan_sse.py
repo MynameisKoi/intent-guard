@@ -1,18 +1,21 @@
 """Smoke test for POST /api/scans/stream (SSE)."""
 
+import io
 from pathlib import Path
 
 from api.app import create_app
 
 
 def test_scan_stream_returns_sse_and_scan_started():
+    """Local paths are CLI-only, so the streaming endpoint is exercised via upload."""
     root = Path(__file__).resolve().parents[1]
-    target = str(root / "demo" / "sample_skill.md")
+    skill = (root / "demo" / "sample_skill.md").read_bytes()
     app = create_app()
     client = app.test_client()
     resp = client.post(
         "/api/scans/stream",
-        json={"target": target},
+        data={"files": (io.BytesIO(skill), "sample_skill.md")},
+        content_type="multipart/form-data",
         headers={"Accept": "text/event-stream"},
     )
     assert resp.status_code == 200

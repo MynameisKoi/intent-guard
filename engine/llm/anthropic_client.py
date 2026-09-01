@@ -37,6 +37,7 @@ class AnthropicLLM(LLMClient):
                     "network_targets",
                     "shell_execution",
                     "owasp_llm_top10",
+                    "workflow",
                     "findings",
                     "category_scores",
                     "annotated_code",
@@ -53,6 +54,14 @@ class AnthropicLLM(LLMClient):
                         "required": [f"LLM{i:02d}" for i in range(1, 11)],
                         "properties": {f"LLM{i:02d}": {"type": "boolean"} for i in range(1, 11)},
                     },
+                    "workflow": {
+                        "type": "object",
+                        "properties": {
+                            "summary": {"type": "string"},
+                            "steps": {"type": "array", "items": {"type": "object"}},
+                            "transitions": {"type": "array", "items": {"type": "object"}},
+                        },
+                    },
                     "findings": {"type": "array", "items": {"type": "object"}},
                     "category_scores": {"type": "array", "items": {"type": "object"}},
                     "annotated_code": {"type": "array", "items": {"type": "object"}},
@@ -62,7 +71,7 @@ class AnthropicLLM(LLMClient):
         }
         msg = self._client.messages.create(
             model=self._model,
-            max_tokens=4096,
+            max_tokens=8192,
             temperature=0.0,
             system=system,
             messages=[{"role": "user", "content": user}],

@@ -14,7 +14,10 @@ from engine.agents.ast_tracer import trace_dataflow
 from engine.agents.ingestion import Workspace, cleanup_workspace, ingest
 from engine.agents.owasp import map_to_taxonomy
 from engine.agents.sandbox import run_sandbox_smoke
+from engine.agents.sanitize import redact_secrets, secret_finding
 from engine.agents.semantic import evaluate_intent
+from engine.agents.workflow import derive_workflow
+from engine.dynamic.runner import dynamic_findings, run_dynamic_analysis
 from engine.database.mongo_client import get_mongo_store
 from engine.database.neo4j_client import get_neo4j
 from engine.telemetry_links import build_telemetry_payload
@@ -57,6 +60,9 @@ def run_scan(
         emit({"type": "phase", "phase": "ingestion", "status": "complete", "scan_id": scan_id})
 
         topology, code_bundle, path_hints = trace_dataflow(ws, on_event=emit, scan_id=scan_id)
+        # Redact before anything leaves the process: the bundle goes to the LLM
+        # provider, the observability proxy, and the report database.
+        code_bundle, redactions = redact_secrets(code_bundle)
         emit(
             {
                 "type": "phase",
@@ -64,6 +70,7 @@ def run_scan(
                 "status": "complete",
                 "scan_id": scan_id,
                 "hint_count": len(path_hints),
+                "redacted_secrets": sum(redactions.values()),
             }
         )
 
@@ -73,6 +80,21 @@ def run_scan(
             emit({"type": "phase", "phase": "graph_storage", "status": "complete", "scan_id": scan_id})
         else:
             emit({"type": "phase", "phase": "graph_storage", "status": "skipped", "scan_id": scan_id})
+
+        # Runs before the semantic step so observed behaviour becomes evidence the
+        # model reasons over, rather than a footnote appended to its verdict.
+        emit({"type": "phase", "phase": "dynamic_analysis", "status": "started", "scan_id": scan_id})
+        dynamic = run_dynamic_analysis(ws, scan_id=scan_id, target_ref=target)
+        dynamic_logs = "\n\n".join(part for part in (dynamic.summary_text(), dynamic_logs) if part) or None
+        emit(
+            {
+                "type": "phase",
+                "phase": "dynamic_analysis",
+                "status": "complete" if dynamic.ran else "skipped",
+                "scan_id": scan_id,
+                "scenarios_run": dynamic.scenarios_run,
+            }
+        )
 
         emit(
             {
@@ -93,6 +115,15 @@ def run_scan(
         )
         emit({"type": "phase", "phase": "semantic_analysis", "status": "complete", "scan_id": scan_id})
 
+        credentials = secret_finding(redactions)
+        if credentials:
+            report.findings.append(credentials)
+        report.findings.extend(dynamic_findings(dynamic))
+        report.meta["dynamic"] = dynamic.model_dump()
+        report.meta["redactions"] = redactions
+        if not (report.workflow and report.workflow.steps):
+            report.workflow = derive_workflow(topology, report)
+
         report = map_to_taxonomy(report)
         emit({"type": "phase", "phase": "taxonomy", "status": "complete", "scan_id": scan_id})
 
@@ -100,6 +131,8 @@ def run_scan(
         report.meta["annotated_code"] = merge_annotations(llm_ann, pattern_annotate(code_bundle))
         report.meta["sandbox"] = run_sandbox_smoke(str(ws.root))
         report.meta["target"] = target
+        if ws.scan_scope:
+            report.meta["scan_scope"] = ws.scan_scope
         if dynamic_logs:
             report.meta["dynamic_logs_included"] = True
         emit({"type": "phase", "phase": "sandbox", "status": "complete", "scan_id": scan_id})

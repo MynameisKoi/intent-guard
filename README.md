@@ -31,11 +31,11 @@ IntentGuard is a multi-agent security framework designed to perform automated st
            ┌─────────────────────┴──────────────────────┐
            │  STATIC TRACK                              │  DYNAMIC TRACK
            ▼                                             ▼
-AST & Dataflow Tracer                          Sandbox Runner
-· Parses .md/Python/JSON/manifests             · Dry-runs agent logic
-· Builds deterministic syntax tree             · Injects adversarial inputs
-· Maps data origins to destinations            · Identifies runtime-only bugs
-· Pushes topology to Neo4j graph               · Runs in isolated Docker container
+AST & Dataflow Tracer                          Adversarial Simulator
+· Parses .md/Python/JSON/manifests             · Replays 8 attack scenarios
+· Builds deterministic syntax tree             · Mock tools, honeytoken environment
+· Maps data origins to destinations            · Records attempted tool arguments
+· Pushes topology to Neo4j graph               · Compares declared vs actual behaviour
 
 Semantic Intent Analyzer
 · LLM reads Neo4j graph data
@@ -55,7 +55,7 @@ Target Input (GitHub Repo URL / .md Skill File)
   → AST & Dataflow Tracer   →  Graph nodes/edges injected into Neo4j
   → Semantic Analyzer       →  Intent descriptions and confidence scores
   → OWASP Mapper            →  Standardized vulnerability classifications
-  → Sandbox Runner          →  Runtime anomaly logs (e.g., retry loops)
+  → Adversarial Simulator   →  Observed tool calls, canary leaks, guardrail gaps
   → Risk Orchestrator       →  Aggregated Risk Score + JSON "Nutrition Label"
   → Flask API + React UI    →  Visual Graph Topology & Non-Tech Summary Views
 ```
@@ -76,12 +76,14 @@ Because traditional antivirus relies on static signatures, it fails against dyna
 
 | Type | Detection method |
 | :--- | :--- |
-| Prompt injection | Semantic Analyzer + Sandbox Runner |
-| Unauthorized tool usage | AST Tracer + Semantic Analyzer |
-| Data exfiltration | Graph Topology Dataflow + LLM |
-| Destructive retry loops | Sandbox Runner (dynamic analysis) |
+| Prompt injection (direct) | Semantic Analyzer + injection detector |
+| Prompt injection (indirect) | Adversarial Simulator — 3 scenarios |
+| Unauthorized tool usage | AST Tracer + Simulator declared-vs-actual delta |
+| Data exfiltration | Graph Topology Dataflow + LLM + honeytoken canaries |
+| Excessive agency / destructive actions | Adversarial Simulator — 3 scenarios |
+| Goal hijacking and jailbreaks | Adversarial Simulator — 2 multi-turn scenarios |
+| Hardcoded credentials | Secret redaction pass |
 | Insecure output handling | Semantic Analyzer |
-| API rate-limit abuse | Sandbox Runner |
 | Supply chain / malicious `.md` | Ingestion Agent + AST Tracer |
 | Over-privileged agent scope | Static Parsing + Semantic Analyzer |
 
@@ -125,8 +127,12 @@ docker build -t intentguard-sandbox -f sandbox.Dockerfile .
 ### Backend (Flask API)
 
 ```bash
-python run_server.py --host 0.0.0.0 --port 5000
+python run_server.py --port 5000
 ```
+
+The API binds `127.0.0.1` by default. It has no authentication and every scan spends
+LLM credits and clones untrusted repositories, so only pass `--host 0.0.0.0` behind an
+authenticating proxy, and set `API_CORS_ORIGINS` accordingly.
 
 ### Frontend (React / Tailwind)
 
@@ -244,7 +250,7 @@ intent-guard/
 
 | Method | Path | Description |
 | :--- | :--- | :--- |
-| `POST` | `/api/scans` | Submit a target (URL/file). JSON body may include optional `dynamic_logs` (string or JSON) for LangGraph dynamic merge after static analysis |
+| `POST` | `/api/scans` | Submit a target. JSON `target` must be a public GitHub URL; use a multipart upload to scan local content. Body may include optional `dynamic_logs` (string or JSON) for LangGraph dynamic merge after static analysis |
 | `GET` | `/api/scans` | List historical scan reports |
 | `GET` | `/api/scans/{id}/report` | Retrieve the structured JSON "Nutrition Label" |
 | `GET` | `/api/scans/{id}/topology` | Retrieve the Neo4j node/edge data for frontend visualization |
@@ -269,6 +275,18 @@ IntentGuard’s Semantic Intent Analyzer talks to **either** the OpenAI API **or
 | `SANDBOX_IMAGE` | `intentguard-sandbox` | Docker image name for dynamic analysis |
 | `SANDBOX_TIMEOUT` | `45` | Execution timeout for the dry-run in seconds |
 | `SANDBOX_NETWORK_NONE` | `true` | Adds `--network none` to sandbox dry-runs (recommended for untrusted third-party agent repos) |
+| `DYNAMIC_ANALYSIS` | `true` | Run the adversarial simulation track |
+| `DYNAMIC_DRIVER` | `scripted` | `scripted` reports capability and missing guardrails for free; `llm` runs the agent's own prompt against each attack and reports what it actually did (one call per scenario) |
+| `DYNAMIC_MAX_TURNS` | `6` | Conversation turns per scenario for the `llm` driver |
+| `SCAN_EXCLUDE_DIRS` | *(see `config.py`)* | Comma-separated directory names pruned before analysis (`.git`, `node_modules`, `__pycache__`, `dist`, …) |
+| `SCAN_EXCLUDE_GLOBS` | *(see `config.py`)* | Comma-separated filename globs skipped (lockfiles, minified bundles, source maps) |
+| `SCAN_FIXTURE_DIRS` | `demo,samples,examples,fixtures,mocks,…` | Directories treated as fixtures: analyzed and reported, excluded from the aggregate score |
+| `SCAN_MAX_FILE_BYTES` | `512000` | Skip files larger than this (generated data inflates the bundle without adding intent) |
+| `API_CORS_ORIGINS` | local `3000`/`5173` origins | Comma-separated origins allowed to call `/api/*` |
+| `MAX_UPLOAD_BYTES` | `25000000` | Request body limit; larger uploads get a JSON `413` |
+| `MAX_UPLOAD_FILES` | `500` | Maximum files accepted in one folder upload |
+| `SCORE_FIXTURES_IN_AGGREGATE` | `false` | Set `true` to let fixture and documentation files raise the aggregate risk score |
+| `HEURISTIC_MAX_SCORE` | `7.0` | Ceiling when no LLM verdict is available, so regex-only fallbacks never report Critical |
 | `LOG_LEVEL` | `INFO` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `MONGO_DB` | `intentguard` | MongoDB database name for scan documents |
 | `LANGCHAIN_TRACING_V2` | `false` | Set `true` to send LangGraph / LangChain traces to [LangSmith](https://smith.langchain.com/) |
@@ -277,7 +295,7 @@ IntentGuard’s Semantic Intent Analyzer talks to **either** the OpenAI API **or
 | `LANGSMITH_BASE_URL` | `https://smith.langchain.com` | Base URL for LangSmith deep-link generation |
 | `HELICONE_API_KEY` | — | Optional [Helicone](https://docs.helicone.ai/) key; when set, OpenAI/Anthropic SDKs and LangGraph LLM steps use the Helicone gateway |
 | `HELICONE_CACHE_ENABLED` | `true` | When using Helicone, enable response caching (strongest on identical static prompts) |
-| `HELICONE_APP_URL` | `https://app.helicone.ai` | Base URL for Helicone deep-link generation |
+| `HELICONE_APP_URL` | `https://us.helicone.ai` | Base URL for Helicone deep-link generation (use `https://eu.helicone.ai` on the EU region) |
 | `USE_LANGGRAPH_RUNTIME` | `true` | Use LangGraph for semantic analysis (static pass + optional dynamic log node); set `false` to force the legacy single-call path |
 
 ---

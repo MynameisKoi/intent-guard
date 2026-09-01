@@ -13,6 +13,7 @@ from typing import Any
 
 from engine.agents.ingestion import Workspace
 from engine.agents.manifest_parser import AgentMarkdownManifest
+from engine.agents.scope import classify_rel
 from schemas.graph_nodes import GraphEdge, GraphNode, TopologyPayload
 
 logger = logging.getLogger(__name__)
@@ -337,12 +338,14 @@ def trace_dataflow(
         if _is_excluded_test_path(rel_norm):
             logger.debug("Skipping test path in topology: %s", rel_norm)
             continue
+        scope = classify_rel(rel_norm)
+        file_hints: list[dict[str, Any]] = []
         if fp.suffix == ".py":
             topo, text, hints = _trace_python_file(fp, rel, nid, seen_ids)
             nodes.extend(topo.nodes)
             edges.extend(topo.edges)
             snippets.append(f"=== {rel} ===\n{text}")
-            path_hints.extend(hints)
+            file_hints.extend(hints)
         elif fp.suffix in (".md",):
             manifest = _manifest_for_rel(ws, rel)
             if manifest:
@@ -350,7 +353,7 @@ def trace_dataflow(
                 nodes.extend(topo_m.nodes)
                 edges.extend(topo_m.edges)
                 snippets.append(_semantic_snippet_for_agent(manifest, rel))
-                path_hints.append(
+                file_hints.append(
                     {
                         "file": rel,
                         "agent": manifest.name,
@@ -364,7 +367,7 @@ def trace_dataflow(
                 nodes.extend(topo_md.nodes)
                 edges.extend(topo_md.edges)
                 snippets.append(f"=== {rel} ===\n{text[:8000]}")
-                path_hints.append(
+                file_hints.append(
                     {
                         "file": rel,
                         "agent": summary["agent"],
@@ -375,7 +378,7 @@ def trace_dataflow(
                     }
                 )
                 if _SENSITIVE.search(text):
-                    path_hints.append(
+                    file_hints.append(
                         {"file": rel, "note": "Markdown references sensitive paths or credentials"}
                     )
         elif fp.suffix == ".json":
@@ -410,6 +413,10 @@ def trace_dataflow(
                     if scan_id:
                         ev["scan_id"] = scan_id
                     on_event(ev)
+
+        for hint in file_hints:
+            hint.setdefault("scope", scope)
+        path_hints.extend(file_hints)
 
     code_bundle = "\n\n".join(snippets)[:120_000]
     if not nodes:

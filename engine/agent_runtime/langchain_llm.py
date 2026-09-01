@@ -72,7 +72,9 @@ def build_langchain_chat_model(
             "model": model,
             "api_key": s.anthropic_api_key,
             "temperature": 0.0,
-            "max_tokens": 4096,
+            # A full report (findings + annotated_code + workflow) overruns 4096 and
+            # arrives truncated, costing whichever field the contract lists last.
+            "max_tokens": 8192,
         }
         if helicone_enabled():
             kwargs["anthropic_api_url"] = s.anthropic_helicone_base_url

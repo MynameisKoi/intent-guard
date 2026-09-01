@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from schemas.graph_nodes import TopologyPayload
+from schemas.graph_nodes import TopologyPayload, WorkflowGraph
 
 
 class RiskCategoryScore(BaseModel):
@@ -33,6 +33,7 @@ class NutritionLabel(BaseModel):
     shell_execution: bool = False
     findings: list[Finding] = Field(default_factory=list)
     category_scores: list[RiskCategoryScore] = Field(default_factory=list)
+    workflow: WorkflowGraph | None = None
     meta: dict[str, Any] = Field(default_factory=dict)
 
 
