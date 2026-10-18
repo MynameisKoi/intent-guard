@@ -81,4 +81,20 @@ def build_langchain_chat_model(
             kwargs["default_headers"] = headers
         return ChatAnthropic(**kwargs)
 
+    if provider == "openrouter":
+        from langchain_openai import ChatOpenAI
+
+        from engine.llm.openrouter_client import openrouter_connection, openrouter_model
+
+        conn = openrouter_connection(headers)
+        return ChatOpenAI(
+            model=openrouter_model(),
+            api_key=conn["api_key"],
+            base_url=conn["base_url"],
+            default_headers=conn["default_headers"],
+            temperature=0.0,
+            # OpenRouter applies a small per-model default otherwise, truncating the report.
+            max_tokens=int(s.llm_max_tokens),
+        )
+
     raise RuntimeError(f"Unsupported LLM_PROVIDER for LangGraph runtime: {provider}")

@@ -78,6 +78,20 @@ def _is_markdown_upload_name(raw: str) -> bool:
     return bool(base) and base.lower().endswith((".md", ".markdown"))
 
 
+def _is_supported_upload_name(raw: str) -> bool:
+    base = secure_filename(Path(str(raw).replace("\\", "/")).name)
+    if not base:
+        return False
+    lower = base.lower()
+    return lower.endswith(
+        (
+            ".md", ".markdown", ".py", ".json",
+            ".gguf", ".safetensors", ".bin", ".pt", ".pth", ".pkl", ".pickle", ".ckpt",
+            ".exe", ".dll", ".so", ".dylib", ".elf", ".wasm", ".asar", ".jar", ".apk",
+        )
+    )
+
+
 def _safe_upload_relative_path(raw: str) -> Path | None:
     cleaned = str(raw or "").replace("\\", "/").strip().lstrip("/")
     if not cleaned:
@@ -144,7 +158,8 @@ def _local_target_error(target: str):
             {
                 "error": (
                     "target must be a public GitHub repository URL "
-                    "(https://github.com/owner/repo); upload files to scan local content"
+                    "(https://github.com/owner/repo) or Hugging Face model URL "
+                    "(https://huggingface.co/owner/model); upload files to scan local content"
                 )
             }
         ),
@@ -186,16 +201,14 @@ def create_scan():
         if too_many:
             return too_many
         is_folder_upload = _is_folder_upload(parts)
-        if not is_folder_upload and len(parts) == 1 and not _is_markdown_upload_name(parts[0].filename):
-            return jsonify({"error": "single file upload must be a .md/.markdown file"}), 400
+        if not is_folder_upload and len(parts) == 1 and not _is_supported_upload_name(parts[0].filename):
+            return jsonify({"error": "unsupported file format for single upload"}), 400
 
         tmp_dir = Path(tempfile.mkdtemp(prefix="ig_upload_dir_"))
         try:
-            saved_count, markdown_count = _save_uploaded_parts(tmp_dir, parts)
+            saved_count, _ = _save_uploaded_parts(tmp_dir, parts)
             if saved_count == 0:
                 return jsonify({"error": "uploaded files were empty or invalid"}), 400
-            if not is_folder_upload and markdown_count == 0:
-                return jsonify({"error": "single file upload must be a .md/.markdown file"}), 400
             force_rescan = _as_bool(request.form.get("force_rescan"), False)
             record = run_scan(str(tmp_dir), force_rescan=force_rescan)
         finally:
@@ -429,16 +442,14 @@ def create_scan_stream():
         if too_many:
             return too_many
         is_folder_upload = _is_folder_upload(parts)
-        if not is_folder_upload and len(parts) == 1 and not _is_markdown_upload_name(parts[0].filename):
-            return jsonify({"error": "single file upload must be a .md/.markdown file"}), 400
+        if not is_folder_upload and len(parts) == 1 and not _is_supported_upload_name(parts[0].filename):
+            return jsonify({"error": "unsupported file format for single upload"}), 400
 
         tmp_dir = Path(tempfile.mkdtemp(prefix="ig_upload_dir_"))
         try:
-            saved_count, markdown_count = _save_uploaded_parts(tmp_dir, parts)
+            saved_count, _ = _save_uploaded_parts(tmp_dir, parts)
             if saved_count == 0:
                 return jsonify({"error": "uploaded files were empty or invalid"}), 400
-            if not is_folder_upload and markdown_count == 0:
-                return jsonify({"error": "single file upload must be a .md/.markdown file"}), 400
             target_path = str(tmp_dir)
 
             def gen_folder():

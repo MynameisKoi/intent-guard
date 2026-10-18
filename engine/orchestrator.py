@@ -6,6 +6,7 @@ import logging
 import traceback
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from collections.abc import Callable
 from typing import Any
 
@@ -21,6 +22,14 @@ from engine.dynamic.runner import dynamic_findings, run_dynamic_analysis
 from engine.database.mongo_client import get_mongo_store
 from engine.database.neo4j_client import get_neo4j
 from engine.telemetry_links import build_telemetry_payload
+from engine.artifacts.huggingface import is_hf_target
+from engine.artifacts.runner import (
+    artifact_findings,
+    artifact_severity_floor,
+    build_artifact_topology,
+    format_artifacts_for_prompt,
+    scan_workspace_artifacts,
+)
 from schemas.graph_nodes import TopologyPayload
 from schemas.report_schema import NutritionLabel, ScanRecord
 
@@ -60,6 +69,30 @@ def run_scan(
         emit({"type": "phase", "phase": "ingestion", "status": "complete", "scan_id": scan_id})
 
         topology, code_bundle, path_hints = trace_dataflow(ws, on_event=emit, scan_id=scan_id)
+
+        # Artifact inspection & REA reverse engineering (GGUF, safetensors, pickle, binaries)
+        emit({"type": "phase", "phase": "artifact_analysis", "status": "started", "scan_id": scan_id})
+        art_reports = scan_workspace_artifacts(
+            ws.root,
+            candidate_paths=ws.artifact_files,
+            precomputed_reports=ws.artifact_reports,
+        )
+        art_evidence = format_artifacts_for_prompt(art_reports, root=ws.root)
+        if art_evidence:
+            code_bundle = f"{code_bundle}\n\n{art_evidence}" if code_bundle else art_evidence
+        art_topo = build_artifact_topology(art_reports)
+        topology.nodes.extend(art_topo.nodes)
+        topology.edges.extend(art_topo.edges)
+        emit(
+            {
+                "type": "phase",
+                "phase": "artifact_analysis",
+                "status": "complete",
+                "scan_id": scan_id,
+                "artifacts_scanned": len(art_reports),
+            }
+        )
+
         # Redact before anything leaves the process: the bundle goes to the LLM
         # provider, the observability proxy, and the report database.
         code_bundle, redactions = redact_secrets(code_bundle)
@@ -119,6 +152,19 @@ def run_scan(
         if credentials:
             report.findings.append(credentials)
         report.findings.extend(dynamic_findings(dynamic))
+
+        # Merge deterministic artifact findings and apply severity floors
+        art_items = artifact_findings(art_reports)
+        if art_items:
+            report.findings.extend(art_items)
+        art_floor = artifact_severity_floor(art_reports)
+        if art_floor > report.risk_score:
+            report.risk_score = round(max(report.risk_score, art_floor), 1)
+            report.risk_label = (
+                "Critical" if report.risk_score >= 8.0 else ("High" if report.risk_score >= 6.0 else "Medium")
+            )
+
+        report.meta["artifacts"] = [r.as_dict() for r in art_reports]
         report.meta["dynamic"] = dynamic.model_dump()
         report.meta["redactions"] = redactions
         if not (report.workflow and report.workflow.steps):
@@ -173,12 +219,16 @@ def run_scan(
 def _sources_from_target(target: str) -> list[dict[str, str]]:
     t = target.strip()
     out: list[dict[str, str]] = []
-    if t.startswith("http") and "github.com" in t:
+    if is_hf_target(t):
+        out.append({"kind": "huggingface", "label": t})
+    elif t.startswith("http") and "github.com" in t:
         import re
 
         m = re.search(r"github\.com/([^/]+/[^/?#]+)", t, re.I)
         slug = m.group(1).rstrip("/") if m else "repo"
         out.append({"kind": "github", "label": slug})
+    elif any(t.lower().endswith(ext) for ext in (".gguf", ".safetensors", ".bin", ".pt", ".exe", ".dll", ".so", ".dylib")):
+        out.append({"kind": "artifact", "label": Path(t).name or t})
     else:
         out.append({"kind": "file", "label": target})
     out.append({"kind": "mcp", "label": "mcp-tools.json"})

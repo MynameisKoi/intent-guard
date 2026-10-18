@@ -15,6 +15,9 @@ from config import get_settings
 from engine.agents.manifest_parser import AgentMarkdownManifest, collect_agent_manifests
 from engine.agents.scope import classify_rel, is_excluded_dir, is_excluded_rel
 
+from engine.artifacts.detect import detect_kind, is_candidate
+from engine.artifacts.huggingface import fetch_hf_repo, is_hf_target
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,10 +42,19 @@ class Workspace:
     """Markdown files with YAML frontmatter treated as prompt-only agent definitions."""
 
     cleanup: bool = False
-    """If True, delete root on context manager exit (used for git clones)."""
+    """If True, delete root on context manager exit (used for git clones / HF scratch)."""
 
     scan_scope: dict[str, Any] = field(default_factory=dict)
     """Counts of scanned/skipped files and the scope mix, surfaced in the report."""
+
+    artifact_reports: list[Any] = field(default_factory=list)
+    """Pre-computed artifact reports (e.g. from Hugging Face model card/weight audits)."""
+
+    artifact_files: list[Path] = field(default_factory=list)
+    """Candidate binary or model weight files for artifact inspection."""
+
+    target_type: str = "repo"
+    """Classification of target: 'github', 'huggingface', 'local_repo', 'artifact', etc."""
 
 
 _SCAN_EXTENSIONS = (".py", ".md", ".json")
@@ -80,6 +92,25 @@ def _collect_files(root: Path) -> tuple[list[Path], dict[str, Any]]:
     return files, skipped
 
 
+def _collect_artifact_files(root: Path) -> list[Path]:
+    """Find candidate model weights or binary files in `root`."""
+    artifacts: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not is_excluded_dir(d)]
+        base = Path(dirpath)
+        for filename in filenames:
+            candidate = base / filename
+            try:
+                rel = candidate.relative_to(root).as_posix()
+            except ValueError:
+                rel = filename
+            if is_excluded_rel(rel):
+                continue
+            if is_candidate(candidate):
+                artifacts.append(candidate.resolve())
+    return sorted(set(artifacts))
+
+
 def _scan_scope_summary(root: Path, files: list[Path], skipped: dict[str, Any]) -> dict[str, Any]:
     scopes: Counter[str] = Counter()
     for path in files:
@@ -97,8 +128,9 @@ def _is_remote_github(target: str) -> bool:
 
 
 def is_remote_target(target: str) -> bool:
-    """Public check used by the HTTP layer, where local paths are not acceptable targets."""
-    return _is_remote_github(target)
+    """Public check used by the HTTP layer, allowing GitHub repositories and Hugging Face models."""
+    t = target.strip()
+    return _is_remote_github(t) or is_hf_target(t)
 
 
 def _normalize_github_target(target: str) -> str:
@@ -109,26 +141,54 @@ def _normalize_github_target(target: str) -> str:
 
 
 def ingest(target: str) -> Workspace:
-    t = _normalize_github_target(target)
+    t = target.strip()
+    if is_hf_target(t):
+        ctx = fetch_hf_repo(t)
+        files, skipped = _collect_files(ctx.root)
+        artifact_files = _collect_artifact_files(ctx.root)
+        manifests = collect_agent_manifests(files, ctx.root)
+        return Workspace(
+            root=ctx.root,
+            target=t,
+            files=files,
+            agent_manifests=manifests,
+            cleanup=True,
+            scan_scope=_scan_scope_summary(ctx.root, files, skipped),
+            artifact_reports=ctx.reports,
+            artifact_files=artifact_files + ctx.binary_paths,
+            target_type="huggingface",
+        )
+
+    t = _normalize_github_target(t)
     if _is_remote_github(t):
         return _clone_github(t)
+
     path = Path(t).expanduser().resolve()
     if not path.exists():
         raise FileNotFoundError(f"Path does not exist: {t}")
+
     if path.is_file():
-        files = [path]
+        kind = detect_kind(path)
+        is_art = bool(kind) or is_candidate(path)
+        is_source = path.suffix.lower() in _SCAN_EXTENSIONS
+        files = [path] if is_source else []
+        artifacts = [path] if is_art else []
         root = path.parent
-        manifests = collect_agent_manifests(files, root)
+        manifests = collect_agent_manifests(files, root) if files else []
         return Workspace(
             root=root,
             target=t,
             files=files,
             agent_manifests=manifests,
             cleanup=False,
-            scan_scope={"files_scanned": 1, "scopes": {"production": 1}, "skipped": {}},
+            scan_scope={"files_scanned": len(files), "scopes": {"production": 1}, "skipped": {}},
+            artifact_files=artifacts,
+            target_type="artifact" if (is_art and not is_source) else "file",
         )
+
     root = path
     files, skipped = _collect_files(root)
+    artifact_files = _collect_artifact_files(root)
     manifests = collect_agent_manifests(files, root)
     return Workspace(
         root=root,
@@ -137,6 +197,8 @@ def ingest(target: str) -> Workspace:
         agent_manifests=manifests,
         cleanup=False,
         scan_scope=_scan_scope_summary(root, files, skipped),
+        artifact_files=artifact_files,
+        target_type="local_repo",
     )
 
 
@@ -159,8 +221,15 @@ def _clone_github(url: str) -> Workspace:
         raise RuntimeError(f"git clone failed: {e}") from e
 
     files, skipped = _collect_files(tmp)
+    artifact_files = _collect_artifact_files(tmp)
     manifests = collect_agent_manifests(files, tmp)
-    logger.info("Ingested GitHub repo into %s (%s files, skipped %s)", tmp, len(files), skipped)
+    logger.info(
+        "Ingested GitHub repo into %s (%s files, %s artifacts, skipped %s)",
+        tmp,
+        len(files),
+        len(artifact_files),
+        skipped,
+    )
     return Workspace(
         root=tmp,
         target=url,
@@ -168,6 +237,8 @@ def _clone_github(url: str) -> Workspace:
         agent_manifests=manifests,
         cleanup=True,
         scan_scope=_scan_scope_summary(tmp, files, skipped),
+        artifact_files=artifact_files,
+        target_type="github",
     )
 
 

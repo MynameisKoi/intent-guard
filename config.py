@@ -13,10 +13,44 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    llm_provider: str = Field(default="openai", description="openai or anthropic")
+    llm_provider: str = Field(default="openai", description="openai, anthropic, or openrouter")
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     llm_model: str | None = None
+    llm_max_tokens: int = 8192
+
+    # OpenRouter — OpenAI-compatible gateway to hundreds of models (LLM_MODEL picks one,
+    # e.g. anthropic/claude-sonnet-5.5, openai/gpt-5.5, deepseek/deepseek-v4-pro).
+    openrouter_api_key: str | None = None
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_default_model: str = "anthropic/claude-sonnet-5.5"
+    openrouter_site_url: str = "https://github.com/MynameisKoi/intent-guard"
+    openrouter_app_name: str = "IntentGuard"
+
+    # Hugging Face model audits. A token is only needed for gated/private repos.
+    hf_token: str | None = Field(default=None, validation_alias=AliasChoices("HF_TOKEN", "HUGGINGFACE_TOKEN"))
+    hf_endpoint: str = "https://huggingface.co"
+    hf_timeout: int = 30
+    hf_max_text_files: int = 60
+    hf_max_text_file_bytes: int = 2_000_000
+    # Weight headers are read with HTTP Range requests, so multi-GB files are never downloaded.
+    hf_max_weight_headers: int = 4
+    # Pickle weights must be downloaded whole to be disassembled; skip anything larger.
+    hf_max_pickle_download_bytes: int = 50_000_000
+
+    # Model artifact inspection (GGUF / safetensors / pickle).
+    gguf_max_header_bytes: int = 256_000_000
+    weight_sample_tensors: int = 24
+    weight_sample_bytes: int = 65_536
+
+    # REA (https://github.com/morluto/rea) reverse engineering for binaries and packaged apps.
+    # REA_COMMAND: `auto` uses `rea` on PATH, else `npx -y rea-agents@latest`; `off` disables it.
+    rea_command: str = "auto"
+    rea_analysis_provider: str | None = None
+    rea_timeout: int = 180
+    rea_max_artifacts: int = 5
+    rea_max_artifact_bytes: int = 500_000_000
+    rea_max_output_chars: int = 24_000
 
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
@@ -85,6 +119,7 @@ class Settings(BaseSettings):
     helicone_app_url: str = "https://us.helicone.ai"
     openai_helicone_base_url: str = "https://oai.helicone.ai/v1"
     anthropic_helicone_base_url: str = "https://anthropic.helicone.ai"
+    openrouter_helicone_base_url: str = "https://openrouter.helicone.ai/api/v1"
 
     # LangGraph runtime for semantic pipeline (static → optional dynamic merge)
     use_langgraph_runtime: bool = True

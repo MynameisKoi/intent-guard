@@ -4,6 +4,7 @@ from config import settings
 from engine.llm.anthropic_client import AnthropicLLM
 from engine.llm.base import LLMClient
 from engine.llm.openai_client import OpenAILLM
+from engine.llm.openrouter_client import OpenRouterLLM
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,8 @@ def get_llm_client() -> LLMClient | None:
             return OpenAILLM()
         if provider == "anthropic":
             return AnthropicLLM()
+        if provider == "openrouter":
+            return OpenRouterLLM()
         logger.warning("Unknown LLM_PROVIDER %s", provider)
         return None
     except Exception as e:
